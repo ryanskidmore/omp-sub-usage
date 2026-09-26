@@ -1,0 +1,71 @@
+{
+  "name": "omp-sub-usage",
+  "version": "0.1.0",
+  "description": "oh-my-pi plugin: Claude and Codex subscription usage (5h / weekly limits and resets) in the footer",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Ryan Skidmore"
+  },
+  "repository": "github:ryanskidmore/omp-sub-usage",
+  "homepage": "https://github.com/ryanskidmore/omp-sub-usage",
+  "keywords": [
+    "omp-plugin",
+    "oh-my-pi",
+    "claude",
+    "codex",
+    "usage"
+  ],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "omp": {
+    "extensions": [
+      "./src/extension.ts"
+    ],
+    "settings": {
+      "display": {
+        "type": "enum",
+        "values": [
+          "status",
+          "widget"
+        ],
+        "default": "status",
+        "description": "status: plain line in omp's footer status area. widget: coloured line just below the editor."
+      },
+      "providers": {
+        "type": "string",
+        "default": "anthropic,openai-codex",
+        "description": "Comma-separated omp provider ids to show, in order."
+      },
+      "modelLimits": {
+        "type": "boolean",
+        "default": false,
+        "description": "Also show per-model weekly caps (e.g. Claude Fable) in the footer."
+      },
+      "refreshSeconds": {
+        "type": "number",
+        "default": 60,
+        "min": 15,
+        "max": 3600,
+        "description": "How often to re-read omp's usage cache. omp itself only calls the provider about every 5 minutes."
+      }
+    }
+  },
+  "scripts": {
+    "check": "bun run lint && bun run typecheck && bun run test && bun run test:integration",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test tests",
+    "test:integration": "bun test integration"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@oh-my-pi/pi-coding-agent": "^18.3.2",
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}
