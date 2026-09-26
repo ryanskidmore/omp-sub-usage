@@ -30,10 +30,12 @@ Works with omp 18.1 and 18.2+ (which moved AuthStorage onto namespaces).
 ## Install
 
 ```sh
-omp plugin install github:ryanskidmore/omp-sub-usage
-# or, from a checkout
-omp plugin link /path/to/omp-sub-usage
+git clone https://github.com/ryanskidmore/omp-sub-usage
+omp plugin link ./omp-sub-usage
 ```
+
+`omp plugin install github:ryanskidmore/omp-sub-usage` only works while the repository is
+public: bun fetches GitHub tarballs without credentials.
 
 Log in to the providers you want to see with `/login` if you have not already.
 
