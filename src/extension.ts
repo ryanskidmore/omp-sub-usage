@@ -24,17 +24,23 @@ import { type ProviderSummary, selectReport, summarize } from "./usage.ts";
 export const STATUS_KEY = "sub-usage";
 /** Redraw often enough that minute-precision countdowns never lag by more than half a minute. */
 const TICK_MS = 30_000;
+/** Upper bound on one read of omp's usage cache, network fetch included. */
+const FETCH_TIMEOUT_MS = 20_000;
+/**
+ * Between windows in the footer status. omp joins every extension's status
+ * with the theme's dot separator, so using that dot here too would make a
+ * neighbouring status read as another window.
+ */
+const STATUS_WINDOW_SEP = " ";
 
 type Theme = ExtensionContext["ui"]["theme"];
 
 function themeStylist(theme: Theme): Stylist {
   return {
     name: (t) => theme.fg("accent", t),
+    // Same colours as omp's native `usage` segment.
     percent: (t, severity) =>
-      theme.fg(
-        severity === "critical" ? "error" : severity === "warning" ? "warning" : "success",
-        t,
-      ),
+      theme.fg(severity === "critical" ? "error" : severity === "warning" ? "warning" : "muted", t),
     muted: (t) => theme.fg("muted", t),
   };
 }
@@ -75,53 +81,67 @@ export default function subUsage(pi: ExtensionAPI): void {
   let inFlight: Promise<void> | undefined;
   let requestRender: (() => void) | undefined;
   let widgetShown = false;
+  /** The plain line last pushed to the host; unchanged lines are not sent again. */
+  let lastLine: string | undefined;
 
   const active = (ctx: ExtensionContext) => ctx.hasUI && settings !== undefined;
 
   function render(ctx: ExtensionContext): void {
     if (!active(ctx) || !settings) return;
-    const now = Date.now();
-    if (settings.display === "widget" && ctx.mode === "tui") {
-      if (!summaries.some((s) => s.windows.length > 0)) {
-        if (widgetShown) ctx.ui.setWidget(STATUS_KEY, undefined);
-        widgetShown = false;
-        return;
-      }
-      if (!widgetShown) {
-        ctx.ui.setWidget(STATUS_KEY, (tui, theme) => widget(tui, theme), {
-          placement: "belowEditor",
-        });
-        widgetShown = true;
-      }
-      requestRender?.();
+    const widgetMode = settings.display === "widget" && ctx.mode === "tui";
+    const line = formatLine(summaries, {
+      now: Date.now(),
+      windowSep: widgetMode ? ctx.ui.theme.sep.dot : STATUS_WINDOW_SEP,
+    });
+    if (line === lastLine) return;
+    lastLine = line;
+    if (!widgetMode) {
+      ctx.ui.setStatus(STATUS_KEY, line || undefined);
       return;
     }
-    const line = formatLine(summaries, { now, windowSep: ctx.ui.theme.sep.dot });
-    ctx.ui.setStatus(STATUS_KEY, line || undefined);
+    if (line === "") {
+      if (widgetShown) ctx.ui.setWidget(STATUS_KEY, undefined);
+      widgetShown = false;
+      return;
+    }
+    if (!widgetShown) {
+      ctx.ui.setWidget(STATUS_KEY, (tui, theme) => widget(tui, theme), {
+        placement: "belowEditor",
+      });
+      widgetShown = true;
+    }
+    requestRender?.();
   }
 
   function widget(tui: { requestRender(): void }, theme: Theme): ExtensionUiComponent {
     requestRender = () => tui.requestRender();
     const style = themeStylist(theme);
+    // omp renders every frame, keystrokes included; rebuild only when the
+    // line or the width changes.
+    let cached: { width: number; line: string | undefined; rows: string[] } | undefined;
+    const rows = (width: number): string[] => {
+      const now = Date.now();
+      const full = { now, windowSep: theme.sep.dot };
+      const plain = formatLine(summaries, full);
+      if (plain === "") return [];
+      if (textWidth(plain) <= width) return [formatLine(summaries, { ...full, style })];
+      // Too narrow: drop the countdowns rather than cut a provider off.
+      const compact = { now, windowSep: " ", countdown: false };
+      const plainCompact = formatLine(summaries, compact);
+      if (textWidth(plainCompact) <= width) return [formatLine(summaries, { ...compact, style })];
+      // Still too wide: plain text, clipped. Rows must never exceed the terminal width.
+      return [clip(plainCompact, width)];
+    };
     return {
       render(width: number): string[] {
-        const now = Date.now();
-        const windowSep = theme.sep.dot;
-        const plain = formatLine(summaries, { now, windowSep });
-        if (plain === "") return [];
-        if (textWidth(plain) <= width) return [formatLine(summaries, { now, windowSep, style })];
-        // Too narrow: drop the countdowns rather than cut a provider off.
-        const bare = summaries.map((s) => ({
-          ...s,
-          windows: s.windows.map(({ resetsAt: _, ...w }) => w),
-        }));
-        const compact = { now, windowSep: " ", providerSep: " | " };
-        const plainCompact = formatLine(bare, compact);
-        if (textWidth(plainCompact) <= width) return [formatLine(bare, { ...compact, style })];
-        // Still too wide: plain text, clipped. Rows must never exceed the terminal width.
-        return [clip(plainCompact, width)];
+        if (cached?.width !== width || cached.line !== lastLine) {
+          cached = { width, line: lastLine, rows: rows(width) };
+        }
+        return cached.rows;
       },
-      invalidate() {},
+      invalidate() {
+        cached = undefined;
+      },
       dispose() {
         requestRender = undefined;
       },
@@ -136,7 +156,7 @@ export default function subUsage(pi: ExtensionAPI): void {
     const current = settings;
     inFlight = (async () => {
       try {
-        const reports = await source.reports(AbortSignal.timeout(20_000));
+        const reports = await source.reports(AbortSignal.timeout(FETCH_TIMEOUT_MS));
         const sessionId = ctx.sessionManager.getSessionId();
         summaries = buildSummaries(reports, current, (p) => source.identity(p, sessionId));
       } catch (err) {
@@ -174,6 +194,7 @@ export default function subUsage(pi: ExtensionAPI): void {
     ctx.ui.setStatus(STATUS_KEY, undefined);
     if (widgetShown) ctx.ui.setWidget(STATUS_KEY, undefined);
     widgetShown = false;
+    lastLine = undefined;
   });
 
   pi.registerCommand("sub-usage", {
@@ -195,10 +216,18 @@ export default function subUsage(pi: ExtensionAPI): void {
         ctx.ui.notify("This omp build exposes no usage API to extensions.", "warning");
         return;
       }
-      if (args.trim() === "refresh") {
-        await Promise.all(settings.providers.map((p) => source.invalidate(p)));
+      const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+      let reports: UsageReport[];
+      try {
+        if (args.trim() === "refresh") {
+          await Promise.all(settings.providers.map((p) => source.invalidate(p, signal)));
+        }
+        reports = await source.reports(signal);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        ctx.ui.notify(`Could not read subscription usage: ${reason}`, "error");
+        return;
       }
-      const reports = await source.reports();
       const sessionId = ctx.sessionManager.getSessionId();
       const detailed = buildSummaries(reports, { ...settings, modelLimits: true }, (p) =>
         source.identity(p, sessionId),

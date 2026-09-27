@@ -1,0 +1,49 @@
+name: Publish
+
+# Push a tag matching package.json's version (`v0.2.0`) to publish it to npm.
+# Authenticates with npm trusted publishing (OIDC): no npm token is stored in
+# the repository. See the README's "Releasing" section for the one-time setup.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      # Version from package.json#packageManager.
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+      # npm does the publishing; trusted publishing needs npm >= 11.5.1.
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Check the tag matches package.json
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+      # No dependency cache: release builds install from scratch.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Lint, typecheck, unit and integration tests
+        run: bun run check
+      # Scripts are skipped because the step above already ran prepublishOnly's check.
+      - name: Publish
+        run: npm publish --ignore-scripts

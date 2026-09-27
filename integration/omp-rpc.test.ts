@@ -7,13 +7,14 @@
  * API key below only satisfies omp's "a model must exist" startup check.
  *
  * Two ways in: loaded directly with `-e`, and installed the way a user
- * would, with `omp plugin link` and configured with `omp plugin config`.
+ * would, from the npm tarball (`npm pack`, so exactly the published files)
+ * via `omp plugin link`, configured with `omp plugin config`.
  *
  * Runs against the omp dev dependency by default. Set OMP_BIN to test
  * another build, e.g. the globally installed one.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -39,6 +40,18 @@ function omp(home: string, ...args: string[]): string {
   const out = `${result.stdout.toString()}${result.stderr.toString()}`;
   if (result.exitCode !== 0) throw new Error(`omp ${args.join(" ")} failed:\n${out}`);
   return out;
+}
+
+/** `npm pack` the plugin and unpack it under `home`; returns the package directory. */
+function packed(home: string): string {
+  const dest = join(home, "tarball");
+  mkdirSync(dest);
+  const pack = Bun.spawnSync(["npm", "pack", "--json", "--pack-destination", dest], { cwd: ROOT });
+  if (pack.exitCode !== 0) throw new Error(`npm pack failed:\n${pack.stderr.toString()}`);
+  const [{ filename }] = JSON.parse(pack.stdout.toString()) as [{ filename: string }];
+  const untar = Bun.spawnSync(["tar", "-xzf", join(dest, filename), "-C", dest]);
+  if (untar.exitCode !== 0) throw new Error(`tar failed:\n${untar.stderr.toString()}`);
+  return join(dest, "package");
 }
 
 class RpcSession {
@@ -146,9 +159,8 @@ describe(`loaded with -e, inside omp (${OMP})`, () => {
         (f) => ourStatus(f) && typeof f.statusText === "string",
         "the sub-usage footer status",
       );
-      // The separator between windows comes from the active symbol preset.
-      expect(frame.statusText).toMatch(
-        /^Claude 5h 42% \(2h 13m\)( · | - )7d 17% \(3d 4h\) \| Codex 5h 81% \(40m\)( · | - )7d 23% \(6d\)$/,
+      expect(frame.statusText).toBe(
+        "Claude 5h 42% (2h 13m) 7d 17% (3d 4h) | Codex 5h 81% (40m) 7d 23% (6d)",
       );
     },
     TIMEOUT_MS,
@@ -188,13 +200,13 @@ describe(`loaded with -e, inside omp (${OMP})`, () => {
   );
 });
 
-describe(`installed with omp plugin link, inside omp (${OMP})`, () => {
+describe(`installed from the npm tarball, inside omp (${OMP})`, () => {
   let home: string;
   let rpc: RpcSession;
 
   beforeAll(async () => {
     home = mkdtempSync(join(tmpdir(), "omp-sub-usage-it-"));
-    expect(omp(home, "plugin", "link", ROOT)).toContain("Linked omp-sub-usage");
+    expect(omp(home, "plugin", "link", packed(home))).toContain("Linked omp-sub-usage");
     omp(home, "plugin", "config", "set", "omp-sub-usage", "providers", "openai-codex");
     // Installed plugins load before `-e` extensions, so the plugin's first read
     // precedes the fake providers; the periodic refresh picks them up.
@@ -219,7 +231,7 @@ describe(`installed with omp plugin link, inside omp (${OMP})`, () => {
         (f) => ourStatus(f) && typeof f.statusText === "string",
         "the sub-usage footer status",
       );
-      expect(frame.statusText).toMatch(/^Codex 5h 81% \(40m\)( · | - )7d 23% \(6d\)$/);
+      expect(frame.statusText).toBe("Codex 5h 81% (40m) 7d 23% (6d)");
     },
     TIMEOUT_MS,
   );

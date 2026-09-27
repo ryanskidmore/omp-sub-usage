@@ -6,7 +6,7 @@ import { claudeReport } from "./fixtures.ts";
 const reports: UsageReport[] = [claudeReport()];
 
 describe("usageSource", () => {
-  test("uses the namespaced AuthStorage API (omp 18.2+)", async () => {
+  test("uses the namespaced AuthStorage API (omp 18.3+)", async () => {
     const calls: string[] = [];
     const source = usageSource({
       getProviderBaseUrl: (p) => (p === "anthropic" ? "https://proxy.example" : undefined),
@@ -16,18 +16,19 @@ describe("usageSource", () => {
             calls.push(`reports:${opts?.baseUrlResolver?.("anthropic")}`);
             return reports;
           },
-          invalidate: async (p?: string) => void calls.push(`invalidate:${p}`),
+          invalidate: async (p?: string, signal?: AbortSignal) =>
+            void calls.push(`invalidate:${p}:${signal?.aborted}`),
         },
         oauth: { identity: (p: string, sid?: string) => ({ email: `${p}:${sid}` }) },
       },
     });
     expect(await source?.reports()).toBe(reports);
-    await source?.invalidate("anthropic");
+    await source?.invalidate("anthropic", new AbortController().signal);
     expect(source?.identity("anthropic", "s1")).toEqual({ email: "anthropic:s1" });
-    expect(calls).toEqual(["reports:https://proxy.example", "invalidate:anthropic"]);
+    expect(calls).toEqual(["reports:https://proxy.example", "invalidate:anthropic:false"]);
   });
 
-  test("falls back to the flat AuthStorage API (omp 18.1)", async () => {
+  test("falls back to the flat AuthStorage API (omp 18.1–18.2)", async () => {
     const source = usageSource({
       authStorage: {
         fetchUsageReports: async () => null,

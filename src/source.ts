@@ -3,9 +3,9 @@
  * what omp's `/usage` command and credential ranking see: same OAuth logins,
  * same cache, same header-fed updates after every Claude/Codex response.
  *
- * omp 18.2 moved AuthStorage onto namespaces (`usage.reports()`,
- * `oauth.identity()`); 18.1 exposed flat methods. Both are supported, found
- * by feature detection rather than version sniffing.
+ * omp 18.3.0 moved AuthStorage onto namespaces (`usage.reports()`,
+ * `oauth.identity()`); up to 18.2 it exposed flat methods. Both are
+ * supported, found by feature detection rather than version sniffing.
  */
 import type { UsageReport } from "@oh-my-pi/pi-ai";
 import type { AccountIdentity } from "./usage.ts";
@@ -36,7 +36,7 @@ export interface HostModelRegistry {
 export interface UsageSource {
   reports(signal?: AbortSignal): Promise<UsageReport[]>;
   identity(provider: string, sessionId?: string): AccountIdentity | undefined;
-  invalidate(provider: string): Promise<void>;
+  invalidate(provider: string, signal?: AbortSignal): Promise<void>;
 }
 
 /** Wrap the host registry's AuthStorage, or undefined when it exposes no usage API. */
@@ -68,8 +68,8 @@ export function usageSource(registry: HostModelRegistry | undefined): UsageSourc
         return undefined;
       }
     },
-    async invalidate(provider) {
-      await invalidateFn?.(provider);
+    async invalidate(provider, signal) {
+      await invalidateFn?.(provider, signal);
     },
   };
 }

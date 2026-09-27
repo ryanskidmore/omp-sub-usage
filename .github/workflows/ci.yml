@@ -24,10 +24,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+      # Version from package.json#packageManager.
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       # oh-my-pi is a dev dependency with a large dependency tree.
       - name: Cache Bun packages
         uses: actions/cache@v6
@@ -55,7 +54,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-      - name: Setup Bun
+      # The locked job uses the Bun pinned in package.json#packageManager; the
+      # latest job tracks upstream Bun too, since new omp releases may need it.
+      - name: Setup Bun (pinned)
+        if: matrix.omp == 'locked'
+        uses: oven-sh/setup-bun@v2
+      - name: Setup Bun (latest)
+        if: matrix.omp == 'latest'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -69,10 +74,14 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Upgrade omp to latest
         if: matrix.omp == 'latest'
-        run: bun add --dev @oh-my-pi/pi-coding-agent@latest
+        run: bun add --dev @oh-my-pi/pi-coding-agent@latest @oh-my-pi/pi-ai@latest
       - name: Show omp version
         run: ./node_modules/.bin/omp --version
+      # Catches host API changes at the type level, before they break at runtime.
+      - name: Typecheck against this omp
+        if: matrix.omp == 'latest'
+        run: bun run typecheck
       # Boots real omp in RPC mode: once with the plugin passed via -e, once
-      # installed through `omp plugin link` and configured via `omp plugin config`.
+      # linked from the `npm pack` tarball and configured via `omp plugin config`.
       - name: Run plugin inside omp
         run: bun run test:integration

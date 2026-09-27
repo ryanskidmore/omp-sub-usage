@@ -7,8 +7,12 @@
   "author": {
     "name": "Ryan Skidmore"
   },
-  "repository": "github:ryanskidmore/omp-sub-usage",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryanskidmore/omp-sub-usage.git"
+  },
   "homepage": "https://github.com/ryanskidmore/omp-sub-usage",
+  "bugs": "https://github.com/ryanskidmore/omp-sub-usage/issues",
   "keywords": [
     "omp-plugin",
     "oh-my-pi",
@@ -60,12 +64,15 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "bun test tests",
-    "test:integration": "bun test integration"
+    "test:integration": "bun test integration",
+    "prepublishOnly": "bun run check"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@oh-my-pi/pi-ai": "^18.3.2",
     "@oh-my-pi/pi-coding-agent": "^18.3.2",
     "@types/bun": "^1.4.2",
     "typescript": "^7.0.2"
-  }
+  },
+  "packageManager": "bun@1.3.14"
 }
