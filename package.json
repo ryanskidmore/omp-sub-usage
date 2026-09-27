@@ -1,6 +1,6 @@
 {
   "name": "omp-sub-usage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "oh-my-pi plugin: Claude and Codex subscription usage (5h / weekly limits and resets) in the footer",
   "type": "module",
   "license": "MIT",
@@ -65,7 +65,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test tests",
     "test:integration": "bun test integration",
-    "prepublishOnly": "bun run check"
+    "prepublishOnly": "echo 'Release by pushing a v<version> tag (README: Releasing): CI publishes and creates the GitHub release. Bypass with --ignore-scripts.' >&2 && exit 1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
