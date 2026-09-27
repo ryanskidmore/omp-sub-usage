@@ -7,11 +7,11 @@ limits in the footer: how much of each rolling window you have used, and when it
 
 ```
  pi · [high] Fable 5.1 · ~/src/thing · ctx: 2.9%/1M
-Claude 5h 42% (2h 13m) · 7d 17% (3d 4h) | Codex 5h 81% (40m) · 7d 23% (6d)
+Claude 5h 42% (2h 13m) 7d 17% (3d 4h) | Codex 5h 81% (40m) 7d 23% (6d)
 ```
 
-The format matches omp's own `usage` status-line segment, which only ever shows the provider
-of the model you are currently on. This shows both, all the time.
+Each window reads the same as in omp's own `usage` status-line segment, which only ever shows
+the provider of the model you are currently on. This shows both, all the time.
 
 ## How it gets the numbers
 
@@ -25,17 +25,16 @@ the session's `AuthStorage`, the same path `/usage` uses. So:
   five minutes), and the plugin just re-reads the cache every minute and after each turn;
 - multi-account setups show the account the session is actually using.
 
-Works with omp 18.1 and 18.2+ (which moved AuthStorage onto namespaces).
+Works with omp 18.1 and later, including 18.3+, which moved AuthStorage onto namespaces.
+
+It is an oh-my-pi plugin only. Upstream [pi](https://github.com/earendil-works/pi) has no
+subscription-usage API to read from, so there is nothing for it to show there.
 
 ## Install
 
 ```sh
-git clone https://github.com/ryanskidmore/omp-sub-usage
-omp plugin link ./omp-sub-usage
+omp plugin install omp-sub-usage
 ```
-
-`omp plugin install github:ryanskidmore/omp-sub-usage` only works while the repository is
-public: bun fetches GitHub tarballs without credentials.
 
 Log in to the providers you want to see with `/login` if you have not already.
 
@@ -71,20 +70,51 @@ omp plugin config set omp-sub-usage display widget
 | `modelLimits`    | `false`                  | Also show per-model weekly caps, such as Claude's Fable limit, in the footer.                                 |
 | `refreshSeconds` | `60`                     | How often to re-read omp's usage cache (minimum 15).                                                          |
 
-Percentages turn yellow at 50% and red at 80% in `widget` mode, the same thresholds as omp's
-native segment. The `status` area is plain text by omp's design. Hide status lines entirely
-with omp's `statusLine.showHookStatus` setting.
+Settings are read when a session starts, so changes apply to the next session.
+
+In `widget` mode percentages are coloured like omp's native segment: yellow from 50%, red from
+80%, and red whenever the provider reports the window exhausted. The `status` area is plain
+text by omp's design. Hide status lines entirely with omp's `statusLine.showHookStatus`
+setting.
 
 ## Development
 
 ```sh
+git clone https://github.com/ryanskidmore/omp-sub-usage
+cd omp-sub-usage
 bun install
+omp plugin link .         # run your checkout in omp
 bun run check             # lint, typecheck, unit tests, integration tests
 bun run test:integration  # boots real omp in RPC mode with the plugin loaded
 OMP_BIN=$(which omp) bun run test:integration   # against your installed omp
 ```
 
-The integration tests run omp itself, with the plugin loaded both via `-e` and via
-`omp plugin link`. Only the upstream usage fetchers are faked (`integration/fake-usage.ts`),
-so everything from omp's AuthStorage to the footer text is the real code path. CI runs them
-against the locked omp version and the latest one on npm.
+The integration tests run omp itself, with the plugin loaded both via `-e` and by linking
+the `npm pack` tarball, so they also check that the published files are complete. Only the
+upstream usage fetchers are faked (`integration/fake-usage.ts`), so everything from omp's
+AuthStorage to the footer text is the real code path. CI runs them against the locked omp
+version and the latest one on npm.
+
+## Releasing
+
+Bump `version` in `package.json`, commit, then tag and push:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The `Publish` workflow checks the tag matches the version, runs `bun run check` and publishes
+with [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token
+lives in the repository. Provenance attestations are added automatically once the
+repository is public.
+
+One-time setup, because npm only offers trusted publishing for a package that already
+exists:
+
+1. Publish the first version by hand: `npm login`, then `npm publish` (this runs
+   `bun run check` first).
+2. On npmjs.com, open the package's Settings → Trusted publishing, choose GitHub Actions and
+   enter `ryanskidmore` / `omp-sub-usage` / `publish.yml`. Allow `npm publish`: new
+   configurations default to staged publishing only.
+3. Optionally, under Publishing access, choose "Require two-factor authentication and
+   disallow tokens".

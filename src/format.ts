@@ -48,17 +48,21 @@ export interface FormatOptions {
   windowSep?: string;
   /** Separator between providers. */
   providerSep?: string;
+  /** Show the time left until each window resets (default true). */
+  countdown?: boolean;
   style?: Stylist;
 }
 
-function formatWindow(w: WindowSummary, now: number, style: Stylist): string {
+function formatWindow(w: WindowSummary, now: number, countdown: boolean, style: Stylist): string {
   // Past its reset time the snapshot is stale: the window has rolled over to
   // zero and the next one only starts counting from the next request.
   if (w.resetsAt !== undefined && w.resetsAt <= now) {
     return `${w.label} ${style.percent("0%", "ok")}`;
   }
   const reset =
-    w.resetsAt !== undefined ? style.muted(` (${formatCountdown(w.resetsAt, now)})`) : "";
+    countdown && w.resetsAt !== undefined
+      ? style.muted(` (${formatCountdown(w.resetsAt, now)})`)
+      : "";
   return `${w.label} ${style.percent(`${Math.round(w.usedPercent)}%`, w.severity)}${reset}`;
 }
 
@@ -66,10 +70,13 @@ export function formatLine(summaries: readonly ProviderSummary[], options: Forma
   const style = options.style ?? PLAIN;
   const windowSep = options.windowSep ?? " · ";
   const providerSep = options.providerSep ?? " | ";
+  const countdown = options.countdown ?? true;
   return summaries
     .filter((s) => s.windows.length > 0)
     .map((s) => {
-      const windows = s.windows.map((w) => formatWindow(w, options.now, style)).join(windowSep);
+      const windows = s.windows
+        .map((w) => formatWindow(w, options.now, countdown, style))
+        .join(windowSep);
       return `${style.name(s.name)} ${windows}`;
     })
     .join(providerSep);

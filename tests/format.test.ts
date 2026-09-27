@@ -39,6 +39,14 @@ describe("formatLine", () => {
     expect(line.startsWith("Claude 5h 0% · 7d")).toBe(true);
   });
 
+  test("drops countdowns on request, and still rolls a past window over to 0%", () => {
+    const summaries = [summarize(claudeReport({ fiveHour: 97, weekly: 17 }))];
+    expect(formatLine(summaries, { now: NOW, countdown: false })).toBe("Claude 5h 97% · 7d 17%");
+    expect(formatLine(summaries, { now: NOW + 3 * HOUR, countdown: false })).toBe(
+      "Claude 5h 0% · 7d 17%",
+    );
+  });
+
   test("omits providers with no windows and returns empty when nothing is left", () => {
     const empty = { provider: "anthropic", name: "Claude", windows: [] };
     expect(formatLine([empty], { now: NOW })).toBe("");

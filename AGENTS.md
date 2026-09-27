@@ -8,7 +8,7 @@
   rate-limit handling.
 - omp packages are type-only dev dependencies. Do not import them at runtime;
   reach the host through the `ExtensionAPI` / `ExtensionContext` objects.
-- The AuthStorage API changed shape in omp 18.2. `source.ts` feature-detects
+- The AuthStorage API changed shape in omp 18.3.0. `source.ts` feature-detects
   both; keep it that way and cover new shapes in `tests/source.test.ts`.
 - `integration/` boots real omp in RPC mode. Run it against your installed
   build too: `OMP_BIN=$(which omp) bun run test:integration`.
