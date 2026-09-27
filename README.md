@@ -97,24 +97,20 @@ version and the latest one on npm.
 
 ## Releasing
 
-Bump `version` in `package.json`, commit, then tag and push:
+Bump `version` in `package.json`, merge to `main`, then tag and push:
 
 ```sh
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The `Publish` workflow checks the tag matches the version, runs `bun run check` and publishes
-with [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token
-lives in the repository. Provenance attestations are added automatically once the
-repository is public.
+The `Publish` workflow checks the tag matches the version, runs `bun run check`, publishes to
+npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no npm token lives
+in the repository, and provenance is attached) and creates the GitHub release with generated
+notes. Each step skips work already done, so a failed run can simply be re-run.
 
-One-time setup, because npm only offers trusted publishing for a package that already
-exists:
+`npm publish` from a checkout refuses to run, so no version reaches npm without its tag and
+release. `npm publish --ignore-scripts` bypasses that if CI is ever unavailable; push the tag
+afterwards and the workflow creates the missing release.
 
-1. Publish the first version by hand: `npm login`, then `npm publish` (this runs
-   `bun run check` first).
-2. On npmjs.com, open the package's Settings → Trusted publishing, choose GitHub Actions and
-   enter `ryanskidmore` / `omp-sub-usage` / `publish.yml`. Allow `npm publish`: new
-   configurations default to staged publishing only.
-3. Optionally, under Publishing access, choose "Require two-factor authentication and
-   disallow tokens".
+npm's trusted publisher for this package is GitHub Actions, `ryanskidmore/omp-sub-usage`,
+workflow `publish.yml`, with `npm publish` allowed.
